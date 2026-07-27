@@ -1,0 +1,240 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  STUDENT
+  ADMIN
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum NotificationType {
+  INFO
+  WARNING
+  SUCCESS
+}
+
+enum ExamCategory {
+  DGNL
+  THPT_MATH
+  THPT_PHYSICS
+  THPT_ENGLISH
+  OTHER
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  TRUE_FALSE_CLUSTER
+  SHORT_ANSWER
+}
+
+model User {
+  id            String    @id @default(cuid())
+  username      String    @unique
+  password      String
+  email         String?   @unique
+  name          String?
+  avatar        String?
+  role          Role      @default(STUDENT)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  submissions   Submission[]
+  progress      UserProgress[]
+  notes         Note[]
+}
+
+model Course {
+  id          String      @id @default(cuid())
+  title       String
+  description String?
+  icon        String?
+  difficulty  Difficulty  @default(MEDIUM)
+  isPublished Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  chapters    Chapter[]
+}
+
+model Chapter {
+  id        String   @id @default(cuid())
+  title     String
+  order     Int      @default(0)
+  courseId  String
+  
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons   Lesson[]
+
+  @@index([courseId])
+}
+
+model Lesson {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  videoUrl    String?
+  pdfUrl      String?
+  order       Int      @default(0)
+  duration    Int      @default(0)
+  chapterId   String
+  
+  chapter     Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  exercises   Exercise[]
+  progress    UserProgress[]
+  notes       Note[]
+
+  @@index([chapterId])
+}
+
+model Exercise {
+  id        String     @id @default(cuid())
+  lessonId  String
+  
+  lesson    Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  questions Question[]
+
+  @@index([lessonId])
+}
+
+model Question {
+  id          String   @id @default(cuid())
+  content     String
+  explanation String?
+  type        QuestionType @default(MULTIPLE_CHOICE)
+  exerciseId  String?
+  examId      String?
+
+  exercise    Exercise? @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  exam        Exam?     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  choices     Choice[]
+  answers     SubmissionAnswer[]
+
+  @@index([exerciseId])
+  @@index([examId])
+}
+
+model Choice {
+  id         String   @id @default(cuid())
+  content    String
+  isCorrect  Boolean  @default(false)
+  questionId String
+
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+}
+
+model Exam {
+  id            String     @id @default(cuid())
+  title         String
+  description   String?
+  category      ExamCategory @default(OTHER)
+  difficulty    Difficulty @default(MEDIUM)
+  questionCount Int        @default(0)
+  duration      Int        @default(60) // in minutes
+  isPublished   Boolean    @default(false)
+  createdAt     DateTime   @default(now())
+
+  questions     Question[]
+  submissions   Submission[]
+}
+
+model Submission {
+  id             String    @id @default(cuid())
+  userId         String
+  examId         String
+  score          Float     @default(0)
+  totalQuestions Int       @default(0)
+  correctCount   Int       @default(0)
+  startedAt      DateTime  @default(now())
+  completedAt    DateTime?
+
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exam           Exam      @relation(fields: [examId], references: [id], onDelete: Cascade)
+  answers        SubmissionAnswer[]
+
+  @@index([userId])
+  @@index([examId])
+}
+
+model SubmissionAnswer {
+  id              String   @id @default(cuid())
+  submissionId    String
+  questionId      String
+  selectedChoiceId String?
+  isCorrect       Boolean  @default(false)
+  scoreEarned     Float    @default(0)
+  answerData      Json?
+
+  submission      Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  question        Question   @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
+  @@index([questionId])
+}
+
+model UserProgress {
+  id             String   @id @default(cuid())
+  lessonId       String
+  userId         String
+  completed      Boolean  @default(false)
+  videoTimestamp Int      @default(0) // seconds watched
+  updatedAt      DateTime @updatedAt
+
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson         Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, lessonId])
+  @@index([userId])
+  @@index([lessonId])
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  userId    String
+  lessonId  String
+  content   String
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson    Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([lessonId])
+}
+
+model Statistics {
+  id            String   @id @default("global_stats")
+  totalStudents Int      @default(0)
+  totalVideos   Int      @default(0)
+  totalExams    Int      @default(0)
+  totalCourses  Int      @default(0)
+  updatedAt     DateTime @updatedAt
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  title     String
+  content   String
+  type      NotificationType @default(INFO)
+  createdAt DateTime         @default(now())
+}
+
+model ExamSchedule {
+  id          String   @id @default(cuid())
+  title       String
+  examDate    DateTime
+  description String?
+}
